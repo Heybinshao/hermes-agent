@@ -1409,10 +1409,18 @@ type DesktopSettingValues = {
   'backdrop.v1': boolean
   chatTextScale: 90 | 100 | 110 | 125 | 150 | 175 // percent; Appearance → Chat Text Size
   'composerPopout.gesturesEnabled': boolean
+  'embed-mode': 'ask' | 'always' | 'off'
+  hideThreadTimeline: boolean
+  'interfaceMode.v1': 'simple' | 'advanced'
   'intro-splash.v1': boolean
   'reasoning.collapsedByDefault': boolean
   sessionListDensity: 'compact' | 'comfortable' | 'detailed'
   tabStripDefault: 'auto' | 'always' | 'never'
+  titlebarAppActions: 'left' | 'right'
+  'toolView.hideCodeDiffs': boolean
+  // Enum, despite the legacy storage key's name.
+  'toolView.technical': 'product' | 'technical'
+  'user-bubble-transparency.v1': number // 0–100; off-band values are refused, not clamped
 }
 host.settings.get<K extends DesktopSettingKey>(key: K): DesktopSettingValues[K]
 host.settings.set<K extends DesktopSettingKey>(key: K, value: DesktopSettingValues[K]): void
@@ -1461,7 +1469,7 @@ Deliberately **not** keys, and why:
 | active theme / mode record | `THEMES_AREA` (register a theme; the user selects it) | theme selection is per window/profile and arbitrated by the app, not a flat preference |
 | `pluginDecisions` (desktop plugin on/off) | the app's Plugins tab (a read-only view is a separate SDK hook) | a plugin toggling another plugin's enable state is plugins interfering with each other |
 | chat / composer width, turn spacing, session-row geometry | nothing yet — these become keys only once they exist as core Appearance preferences (chat width: #55287) | layout is host-owned; a plugin-owned geometry contract would make every theme a layout contract |
-| `toolView.technical`, `embed-mode`, `titlebarAppActions`, `translucency.v2`, `user-bubble-transparency.v1`, `hermesDesktop.zoom.*` | follow-up keys after each store is audited | some drive the main process or window chrome; each needs its own guard and ownership review before it becomes plugin-writable |
+| `translucency.v2`, `hermesDesktop.zoom.*` | `host.window` (proposed: #121896 items B/C) | these drive the main process / window chrome, not a renderer atom — they need a typed window bridge with its own guards, not a settings key |
 
 Migration — `hermes-appearance-hub`, which today does
 `localStorage.setItem('hermes.desktop.sessionListDensity', id)` followed by
