@@ -79,9 +79,10 @@ const isTitlebarAppActionsSide = (value: unknown): value is TitlebarAppActionsSi
 const isToolViewMode = (value: unknown): value is ToolViewMode => value === 'product' || value === 'technical'
 
 // Same 0–100 band the Settings-page lever uses (apps/shared translucency).
-// Unlike `setUserBubbleTransparency`, which clamps anything numeric, the
-// gateway refuses out-of-band and non-numeric values outright — a plugin bug
-// must not silently land on an endpoint.
+// Out-of-band and non-numeric values are refused outright; in-band values pass
+// through to the store, which rounds like the Settings-page lever does
+// (`setUserBubbleTransparency` → `clampIntensity` → `Math.round`). So
+// `set(…, 42.6)` lands as 43 — same value a hand on that slider could produce.
 const isBubbleTransparency = (value: unknown): value is number =>
   typeof value === 'number' && Number.isFinite(value) && value >= TRANSLUCENCY_MIN && value <= TRANSLUCENCY_MAX
 

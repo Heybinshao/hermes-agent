@@ -181,6 +181,17 @@ describe('host.settings', () => {
     expect($toolViewMode.get()).toBe('product')
   })
 
+  it('rounds in-band bubble values the way the Settings-page lever does', () => {
+    // Documented, not a bug: the gateway band-checks, the store rounds
+    // (`clampIntensity` → Math.round). Pin it so a later "tighten the guard"
+    // change has to be a decision, not a drive-by.
+    host.settings.set('user-bubble-transparency.v1', 42.6)
+    expect(host.settings.get('user-bubble-transparency.v1')).toBe(43)
+
+    host.settings.set('user-bubble-transparency.v1', 0.4)
+    expect(host.settings.get('user-bubble-transparency.v1')).toBe(0)
+  })
+
   it('subscribes immediately and follows changes from the native settings surface', () => {
     const listener = vi.fn()
     const unsubscribe = host.settings.subscribe('backdrop.v1', listener)
