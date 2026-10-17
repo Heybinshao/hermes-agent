@@ -1533,6 +1533,53 @@ page's intro-splash switch becomes `host.settings.subscribe('intro-splash.v1', f
 is the keybind-map row above: contribute the default through `KEYBINDS_AREA` and
 keep the user's override in `ctx.storage`, not in the app's map.
 
+### Window-level appearance — `host.window`
+
+Three Appearance controls are not renderer preferences and therefore not
+`host.settings` keys: they drive the main process or the window chrome. Before
+this door they were reachable only through `window.hermesDesktop.*` — raw
+preload IPC, which plugin rules do not allow and which breaks when the bridge
+changes shape.
+
+```ts
+host.window.zoom.available(): boolean
+host.window.zoom.get(): Promise<null | { level: number; percent: number }>
+host.window.zoom.setPercent(percent: number): void
+host.window.zoom.subscribe(fn: (state: { level: number; percent: number }) => void): () => void
+
+host.window.translucency.get(): TranslucencyState
+host.window.translucency.set(patch: Partial<TranslucencyState>): void
+host.window.translucency.subscribe(fn: (state: TranslucencyState) => void): () => void
+
+host.window.minimizeToTray.available(): boolean
+host.window.minimizeToTray.get(): Promise<null | { enabled: boolean; available: boolean }>
+host.window.minimizeToTray.set(on: boolean): Promise<null | { enabled: boolean; available: boolean }>
+host.window.minimizeToTray.subscribe(fn: (status: { enabled: boolean; available: boolean }) => void): () => void
+```
+
+Three scopes, and they differ from `host.settings`:
+
+- **`zoom` is per window.** The bridge reports the window this renderer is in,
+  and a change applies to that window only — the same thing ⌘+/⌘− does.
+- **`translucency` is a renderer-owned book**, desktop-wide, mirrored to the
+  main process. `set` patches it field by field through the native setters
+  (`intensity` / `fade` clamped to the lever's band, `mode` / `material` /
+  `scope` normalized to their enums); omitted fields are untouched. Read
+  `$translucency`'s resolved state, not the stored book — the book is split per
+  light/dark appearance and resolved for the one currently painted.
+- **`minimizeToTray` is a machine-level preference** owned by the main process.
+
+**Feature-detect, do not assume.** `zoom` and `minimizeToTray` return `null`
+from `get` / `set` and expose `available() === false` on a build that predates
+the channel; `subscribe` returns a no-op disposer there, so registration can be
+unconditional. `translucency` needs no probe — it is the renderer's own store.
+
+**The tray trap:** `status().available` reports whether the OS backs a tray at
+all, and on macOS the tray object only exists *after* minimize-to-tray is
+enabled. A control that gates itself on `available` alone deadlocks: it stays
+disabled, so the setting can never be turned on. Gate on
+`available || enabled`.
+
 ### Typed capabilities bridge — `host.skills`, `host.toolsets`, `host.profiles`, `host.pluginDecisions`
 
 ```ts
