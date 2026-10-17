@@ -19,6 +19,12 @@ import {
 } from '@/store/titlebar-app-actions'
 import { $userBubbleTransparency, setUserBubbleTransparency } from '@/store/user-bubble-transparency'
 import { $tabStripDefault, setTabStripDefault, type TabStripDefault } from '@/store/tabstrip-prefs'
+import { $showModelPricing, setShowModelPricing } from '@/store/model-pricing'
+import { $reactionsEnabled, setReactionsEnabled } from '@/store/reactions-enabled'
+import { $textDirection, setTextDirection, type TextDirection } from '@/store/text-direction'
+import { $tipsEnabled, setTipsEnabled } from '@/store/tips'
+import { $toursEnabled, setToursEnabled } from '@/store/tours'
+import { $vibeHeartsEnabled, setVibeHeartsEnabled } from '@/store/vibe-hearts-enabled'
 
 export interface DesktopSettingValues {
   'backdrop.v1': boolean
@@ -33,13 +39,19 @@ export interface DesktopSettingValues {
   hideThreadTimeline: boolean
   'interfaceMode.v1': InterfaceMode
   'intro-splash.v1': boolean
+  'model-pricing.v1': boolean
+  'reactions.v1': boolean
   'reasoning.collapsedByDefault': boolean
   sessionListDensity: SessionListDensity
   tabStripDefault: TabStripDefault
+  textDirection: TextDirection
+  'tips.rotation.v1': boolean
   titlebarAppActions: TitlebarAppActionsSide
   'toolView.hideCodeDiffs': boolean
   'toolView.technical': ToolViewMode
+  'tours.v1': boolean
   'user-bubble-transparency.v1': number
+  'vibeHearts.v1': boolean
 }
 
 export type DesktopSettingKey = keyof DesktopSettingValues
@@ -80,6 +92,9 @@ const isSessionListDensity = (value: unknown): value is SessionListDensity =>
 const isTabStripDefault = (value: unknown): value is TabStripDefault =>
   value === 'auto' || value === 'always' || value === 'never'
 
+const isTextDirection = (value: unknown): value is TextDirection =>
+  value === 'auto' || value === 'ltr' || value === 'rtl'
+
 const isTitlebarAppActionsSide = (value: unknown): value is TitlebarAppActionsSide =>
   value === 'left' || value === 'right'
 
@@ -108,16 +123,31 @@ const settingBindings = {
   // click is the whole side effect, for plugins too.
   'interfaceMode.v1': bindSetting($interfaceMode, setInterfaceMode, isInterfaceMode),
   'intro-splash.v1': bindSetting($introSplash, setIntroSplash, isBoolean),
+  'model-pricing.v1': bindSetting($showModelPricing, setShowModelPricing, isBoolean),
+  // Store-level subscribe mirrors this toggle into the agent-facing config
+  // (`display.message_reactions`), so the agent's react tool leaves the model
+  // schema when the user turns reactions off. The mirror lives on the store,
+  // not in this binding: a plugin write is the same Settings-page click.
+  'reactions.v1': bindSetting($reactionsEnabled, setReactionsEnabled, isBoolean),
   'reasoning.collapsedByDefault': bindSetting($reasoningCollapsedByDefault, setReasoningCollapsedByDefault, isBoolean),
   sessionListDensity: bindSetting($sessionListDensity, setSessionListDensity, isSessionListDensity),
   tabStripDefault: bindSetting($tabStripDefault, setTabStripDefault, isTabStripDefault),
+  // Desktop-wide reading preference (the store's own comment: "global to this
+  // desktop install — every window and profile"), so it carries no profile
+  // segment and this binding adds none.
+  textDirection: bindSetting($textDirection, setTextDirection, isTextDirection),
+  // Same store-level config mirror as reactions (`display.in_app_tips`).
+  'tips.rotation.v1': bindSetting($tipsEnabled, setTipsEnabled, isBoolean),
   titlebarAppActions: bindSetting($titlebarAppActionsSide, setTitlebarAppActionsSide, isTitlebarAppActionsSide),
   'toolView.hideCodeDiffs': bindSetting($hideCodeDiffs, setHideCodeDiffs, isBoolean),
   // Enum, not the legacy boolean the storage key's name suggests (see above).
   // modeBound writes land as user intent: policy-shadowed in Simple mode,
   // revealed on first write — exactly how the Settings page behaves.
   'toolView.technical': bindSetting($toolViewMode, setToolViewMode, isToolViewMode),
-  'user-bubble-transparency.v1': bindSetting($userBubbleTransparency, setUserBubbleTransparency, isBubbleTransparency)
+  // Same store-level config mirror as reactions (`display.in_app_tours`).
+  'tours.v1': bindSetting($toursEnabled, setToursEnabled, isBoolean),
+  'user-bubble-transparency.v1': bindSetting($userBubbleTransparency, setUserBubbleTransparency, isBubbleTransparency),
+  'vibeHearts.v1': bindSetting($vibeHeartsEnabled, setVibeHeartsEnabled, isBoolean)
 } satisfies { [Key in DesktopSettingKey]: SettingBinding<DesktopSettingValues[Key]> }
 
 const bindingsByKey = settingBindings as unknown as Record<string, SettingBinding<unknown>>
