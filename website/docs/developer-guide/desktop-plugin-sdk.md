@@ -1424,14 +1424,20 @@ type DesktopSettingValues = {
   hideThreadTimeline: boolean
   'interfaceMode.v1': 'simple' | 'advanced'
   'intro-splash.v1': boolean
+  'model-pricing.v1': boolean
+  'reactions.v1': boolean
   'reasoning.collapsedByDefault': boolean
   sessionListDensity: 'compact' | 'comfortable' | 'detailed'
   tabStripDefault: 'auto' | 'always' | 'never'
+  textDirection: 'auto' | 'ltr' | 'rtl'
+  'tips.rotation.v1': boolean
   titlebarAppActions: 'left' | 'right'
   'toolView.hideCodeDiffs': boolean
   // Enum, despite the legacy storage key's name.
   'toolView.technical': 'product' | 'technical'
+  'tours.v1': boolean
   'user-bubble-transparency.v1': number // 0–100; off-band values are refused, not clamped
+  'vibeHearts.v1': boolean
 }
 host.settings.get<K extends DesktopSettingKey>(key: K): DesktopSettingValues[K]
 host.settings.set<K extends DesktopSettingKey>(key: K, value: DesktopSettingValues[K]): void
@@ -1465,6 +1471,26 @@ adapt your own rendering.
 const dispose = host.settings.subscribe('chatTextScale', pct => setMyFontScale(pct / 100))
 ctx.onDispose(dispose)
 ```
+
+**Scope: every key here is desktop-wide.** These are the renderer's own
+preferences, keyed `hermes.desktop.*` with no profile segment, and
+`store/text-direction.ts` states the rule outright — *"global to this desktop
+install (every window and profile) … not about a backend, profile or
+session"*. A write from any profile view changes the setting for every
+profile, exactly as the native control does. Two neighbouring surfaces scope
+differently and are deliberately **not** keys in this table: the window
+channels (UI zoom, translucency, minimize-to-tray) are window-level and need a
+typed `host.window` bridge; the config-backed fonts (`desktop.font_family`,
+`terminal.font_family`) are `@_profile_scoped`, where a write with no profile
+names the profile the backend was *launched* with rather than the one on
+screen (#125969).
+
+**Three toggles also reach the agent.** `reactions.v1`, `tours.v1` and
+`tips.rotation.v1` mirror to `display.message_reactions`, `display.in_app_tours`
+and `display.in_app_tips`, because those switches decide whether a tool is in
+the model's schema at all. The mirror is a store subscription, not part of
+this binding — a plugin write reaches it exactly as a Settings-page click
+does, and no extra authority is granted.
 
 Arbitration: the allowlist above is closed. An unknown key or a value outside
 the key's type throws **synchronously** (`Unsupported desktop setting: …` /
