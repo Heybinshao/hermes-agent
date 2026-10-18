@@ -448,14 +448,44 @@ def _cron_delivery_hint(agent: Any) -> str:
     return f"Delivery destination ({deliver_key}): {hint}" if hint else ""
 
 
+def _cron_output_language_hint() -> str:
+    """Anchor a scheduled run's output language to the profile's UI language.
+
+    A cron run has no user turn to mirror, so without this the delivered brief's language is
+    whatever the model infers from the job prompt — and every built-in automation blueprint
+    ships an English prompt (``cron/blueprint_catalog.py``), so a ``zh`` UI still produced
+    English briefs. The line is advisory: a job prompt that names its own language wins, and
+    English profiles get nothing at all so their prompt stays byte-identical.
+    """
+    try:
+        from agent.i18n import DEFAULT_LANGUAGE, get_language
+        from agent.i18n_languages import BUNDLED_LANGUAGE_INFO
+        language = get_language()
+    except Exception:
+        return ""
+    if not language or language == DEFAULT_LANGUAGE:
+        return ""
+    name = (BUNDLED_LANGUAGE_INFO.get(language) or (language, False))[0]
+    return (
+        f"Write the response in {name} ({language}) — the user's configured language — "
+        "unless this job's own instructions name a different one."
+    )
+
+
 def platform_hint(agent: Any) -> str:
     """Built-in/plugin platform hint + Telegram rich-messages opt-in + config
-    override + desktop TUI clarifier; cron agents also carry their delivery channel's hint."""
+    override + desktop TUI clarifier; cron agents also carry their delivery channel's hint and
+    the profile-language line."""
     platform_key = (agent.platform or "").lower().strip()
     _effective_hint = _resolve_platform_hint(agent, platform_key, _default_platform_hint(platform_key))
     if platform_key == "tui" and _effective_hint:
         _effective_hint = _tui_embedded_pane_clarifier(_effective_hint)
     if platform_key == "cron":
+        # Behavior, not chrome: a user's platform_hints.cron.replace must not drop the language
+        # anchor, so it is appended after the override is resolved.
+        _language = _cron_output_language_hint()
+        if _language:
+            _effective_hint = f"{_effective_hint}\n\n{_language}".strip()
         _delivery = _cron_delivery_hint(agent)
         if _delivery:
             _effective_hint = f"{_effective_hint}\n\n{_delivery}".strip()
