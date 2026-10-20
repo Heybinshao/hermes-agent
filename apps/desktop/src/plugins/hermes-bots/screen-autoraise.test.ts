@@ -9,6 +9,13 @@ import type { RosterRow } from './types'
 
 const opened: string[] = []
 let meta: Record<string, { screenAutoOpen?: boolean }> = {}
+/** `display.status` answers the auto-raise asks for; empty once cached. */
+const statusRequests: string[] = []
+let statusSupported = true
+/** What `display.status` already told this window; null = never asked. */
+let cachedStatus: null | { supported: boolean } = { supported: true }
+
+const flush = () => new Promise(resolve => setTimeout(resolve, 0))
 
 vi.mock('@hermes/plugin-sdk', () => ({ host: { onEvent: () => () => undefined } }))
 vi.mock('./data', () => ({
@@ -22,6 +29,22 @@ vi.mock('./routing', () => ({
     status: 'resolved',
     route: { connectionId: 'local', mode: 'local', profile: bot.name, targetProfile: bot.name }
   })
+}))
+vi.mock('./screen-connection', () => ({
+  displayRequest: async (bot: RosterRow) => {
+    statusRequests.push(bot.name)
+
+    return { supported: statusSupported }
+  },
+  isDisplayUnavailable: () => false
+}))
+vi.mock('./screen-state', () => ({
+  $screenState: { get: () => ({}) },
+  screenStateFor: (_all: unknown, bot: RosterRow) =>
+    cachedStatus ? { status: cachedStatus, lease: null, viewer: null, key: bot.name } : null,
+  beginScreenStatusRequest: () => 1,
+  setScreenStatus: () => undefined,
+  setScreenUnavailable: () => undefined
 }))
 vi.mock('./screen-open', () => ({
   openBotScreen: (bot: RosterRow) => {
@@ -41,6 +64,9 @@ const toolStart = (profile: string, name: string, connectionId?: string) =>
 describe('screen auto-raise', () => {
   beforeEach(async () => {
     opened.length = 0
+    statusRequests.length = 0
+    statusSupported = true
+    cachedStatus = { supported: true }
     meta = { parker: { screenAutoOpen: true }, alfred: {} }
     const mod = await import('./screen-autoraise')
     mod.resetScreenAutoRaise()
@@ -79,6 +105,40 @@ describe('screen auto-raise', () => {
     expect(handleScreenToolStart(toolStart('nobody', 'computer_use'), 5)).toBe(false)
     // Same profile name on a different source is a different bot.
     expect(handleScreenToolStart(toolStart('parker', 'computer_use', 'ssh-box'), 5)).toBe(false)
+    expect(opened).toEqual([])
+  })
+
+  it('asks for the status once and raises when the host can serve a screen', async () => {
+    const { handleScreenToolStart } = await import('./screen-autoraise')
+
+    cachedStatus = null
+
+    expect(handleScreenToolStart(toolStart('parker', 'computer_use'), 5)).toBe(true)
+    await flush()
+
+    expect(statusRequests).toEqual(['parker'])
+    expect(opened).toEqual(['parker'])
+  })
+
+  it('never raises a tab on a host that cannot serve a screen', async () => {
+    const { AUTO_RAISE_COOLDOWN_MS, handleScreenToolStart } = await import('./screen-autoraise')
+
+    statusSupported = false
+    cachedStatus = null
+
+    expect(handleScreenToolStart(toolStart('parker', 'computer_use'), 5)).toBe(true)
+    await flush()
+
+    expect(statusRequests).toEqual(['parker'])
+    expect(opened).toEqual([])
+
+    // The answer is cached for the life of the window: the next burst does not ask again,
+    // and still does not open a tab that could only say "no bot screen on this host".
+    cachedStatus = { supported: false }
+    expect(handleScreenToolStart(toolStart('parker', 'computer_use'), 5 + AUTO_RAISE_COOLDOWN_MS)).toBe(true)
+    await flush()
+
+    expect(statusRequests).toEqual(['parker'])
     expect(opened).toEqual([])
   })
 })

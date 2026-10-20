@@ -12,6 +12,8 @@
  * seq-gated ring is not enough and the wake is also rate-limited per bot.
  *
  * Fencing rules, in order:
+ *   - the bot's host cannot serve a screen → nothing (`display.status.supported`
+ *     is constant per host, so one cached answer settles it for good)
  *   - the tab is already open → nothing (never re-front over what you moved to)
  *   - a manual Close holds until the NEXT fresh screen use, never re-raises
  *     mid-burst: a user closing the tab while the bot clicks around has said
@@ -26,7 +28,15 @@ import type { RpcEvent } from '@hermes/plugin-sdk'
 
 import { $botMeta, $lastRoster, botSelectionKey } from './data'
 import { botRosterMeta, resolveBotConnectionRoute } from './routing'
+import { displayRequest, type DisplayStatus, isDisplayUnavailable } from './screen-connection'
 import { openBotScreen, screenPaneId } from './screen-open'
+import {
+  $screenState,
+  beginScreenStatusRequest,
+  screenStateFor,
+  setScreenStatus,
+  setScreenUnavailable
+} from './screen-state'
 import type { RosterRow } from './types'
 
 /** Tools whose first call means the bot is now using its screen. Browser tools count:
@@ -117,6 +127,46 @@ export function noteScreenTabClosed(bot: RosterRow, now = Date.now()): void {
   raiseState.set(key, { lastRaisedAt: raiseState.get(key)?.lastRaisedAt ?? 0, closedAt: now })
 }
 
+/**
+ * Raise `bot`'s Screen tab unless its own host has already said it cannot serve
+ * one. `display.status.supported` is a constant per host (`is_supported_host` is
+ * the platform check in `tools/bot_desktop/runtime.py`), so a cached answer is
+ * final; an unknown one is asked for once instead of opening a tab whose whole
+ * body would be "no bot screen on this host" (#142221).
+ *
+ * A status we could not read is NOT a refusal: fall through and let the pane
+ * explain itself, which keeps the old behaviour for backends that predate
+ * `display.status`.
+ */
+async function raiseWhenSupported(bot: RosterRow): Promise<void> {
+  const cached = screenStateFor($screenState.get(), bot)
+
+  if (cached?.unavailable || (cached?.status && !cached.status.supported)) {
+    return
+  }
+
+  if (!cached?.status) {
+    try {
+      const request = beginScreenStatusRequest(bot)
+      const status = await displayRequest<DisplayStatus>(bot, 'display.status')
+
+      setScreenStatus(bot, status, request)
+
+      if (!status.supported) {
+        return
+      }
+    } catch (error) {
+      if (isDisplayUnavailable(error)) {
+        setScreenUnavailable(bot)
+
+        return
+      }
+    }
+  }
+
+  openBotScreen(bot, botRosterMeta(bot, $botMeta.get()) ?? null)
+}
+
 export function handleScreenToolStart(event: RpcEvent, now = Date.now()): boolean {
   const payload = event.payload as { name?: string } | undefined
 
@@ -136,8 +186,10 @@ export function handleScreenToolStart(event: RpcEvent, now = Date.now()): boolea
     return false
   }
 
+  // Claim the cooldown before the status check: the answer is cached after the
+  // first one, and a burst must not queue an RPC per tool call.
   raiseState.set(key, { lastRaisedAt: now, closedAt: 0 })
-  openBotScreen(bot, botRosterMeta(bot, $botMeta.get()) ?? null)
+  void raiseWhenSupported(bot)
 
   return true
 }
